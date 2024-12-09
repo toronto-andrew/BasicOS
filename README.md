@@ -9,6 +9,20 @@ This is a basic, educational operating system designed to demonstrate fundamenta
 - GRUB2
 - QEMU (for testing)
 
+
+## Environment
+- Ubuntu 24.04
+- qemu
+- nasm
+- gcc
+- make
+
+- sudo apt-get update
+- sudo apt-get install nasm qemu gcc gcc-multilib
+
+debug tools
+- sudo apt-get install xxd gdb
+
 ## Building the OS
 ```bash
 # Compile the OS
