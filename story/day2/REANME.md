@@ -1,36 +1,70 @@
 # BasicOS - A Minimal Operating System
 
-## Overview
-心血来潮，准备写一个操作系统，记录一下学习过程。主要参考著名的《恐龙书》。从bootloader开始，逐步实现一个最小的操作系统。
-既然是操作系统，那么就避免不了汇编语言。之后会使用C语言来实现。最后如果有余力的话，会使用Rust来实现。
+## Hello World!
+死循环没什么意思，我们来尝试输出一句 Hello, World!
 
-## 环境
-- Ubuntu 24.04
-- qemu
-- nasm
-- gcc
-- make  
+问题来了，如何在汇编中打印字符？首先，我们要设置要打印哪个字符。我们只需要将字符存储在 ax 寄存器的低 8 位（也就是 al 寄存器），然后调用 int 0x10 中断执行打印即可。
 
-## 安装环境
-```bash
-sudo apt-get update
-sudo apt-get install nasm qemu gcc gcc-multilib
-```
+对于此时的 x86 CPU 来讲，一共有 4 个 16 位通用寄存器，包括 ax、bx、cx 和 dx。有时候我们只需要使用 8 位，因此每个 16 位寄存器可以拆为两个 8 位寄存器，例如 al 和 ah。
 
-## 安装环境 
-```bash
-sudo apt-get install xxd gdb
-```
-```bash 
-sudo apt-get install qemu-system-i386
-```
+什么是中断？简单来讲就是给 CPU 正在做的事情按下暂停，然后去执行我们指定的任务。中断可以执行的任务被存储在内存最开始的区域，这个区域像一张表格（中断向量表），每个单元格指向一段指令的地址，也就是 ISR（interrupt service routines）。
+
+为了方便在汇编中调用，BIOS 给这些中断分配了号码。例如，int 0x10 就是第 16 个中断，它指向了一个打印字符的 ISR。
+
+然而 int 0x10 中断只知道要打印，但并不知道要怎么打印。我们这里将其设置为 TTY（TeleTYpe）模式，让它接收字符并显示在屏幕上，然后将光标向后移动。设置 TTY 模式的方法是将 ah 寄存器设置为 0x0e，你可以理解为传给系统中断的参数。
+
+##why have to load into 0x7c00?
+512 字节小小的也很可爱，但显然满足不了操作系统庞大的欲望，因此操作系统的绝大部分代码被放在磁盘的其它地方。这些代码是如何加载到内存的呢？
+
+在回答如何加载到内存之前，我们先关注另一个更紧迫的问题：加载时应该加载到内存的哪里？
+
+答案是，引导扇区并没有被加载到内存的 0x0000 处。这是因为内存中还需要存储一些重要的信息，例如中断向量表、BIOS 数据区等。这些内容需要占用一部分内存，因此有人规定，引导扇区应当被加载到 0x7c00 处。
+
+更具体地讲，开头这块的内存布局如下：
+
+
+
+                  |         Free          |
+0x100000  +-----------------------+
+                  |     BIOS (256 KB)     |
+0x0C0000  +-----------------------+
+                  | Video Memory (128 KB) |
+0x0A0000  +-----------------------+
+                  |Extended BIOS Data Area|
+                  |        (639 KB)       |
+0x09FC00  +-----------------------+
+                  |     Free (638 KB)     |
+0x007E00  +-----------------------+
+                 |   Loaded Boot Sector  |
+                 |      (512 Bytes)      |
+0x007C00  +-----------------------+
+                 |                       |
+0x000500  +-----------------------+
+                |     BIOS Data Area    |
+                |      (256 Bytes)      |
+0x000400  +-----------------------+
+                | Interrupt Vector Table|
+                |         (1 KB)        |
+0x000000  +-----------------------+
+
 
 ## 编译
 ```bash
 nasm -f bin boot.asm -o boot.bin
 ```
 
-## 运行
+##创建磁盘映像
+
+创建一个 1.44MB 的空磁盘映像：
 ```bash
-qemu-system-x86_64 boot.bin
+dd if=/dev/zero of=floppy.img bs=512 count=2880
 ```
+将引导扇区写入磁盘映像：
+```bash
+dd if=boot.bin of=floppy.img bs=512 count=1 conv=notrunc
+```
+测试引导扇区
+```bash
+qemu-system-x86_64 -fda floppy.img
+```
+你应该能看到屏幕打印出 Hello, world!，然后程序进入死循环。
