@@ -1,10 +1,3 @@
-简单菜单：在屏幕上显示一个简单的菜单，用户可以选择加载哪个程序或进行何种操作。
-
-加载程序 A：显示作者姓名。
-加载程序 B：显示当前日期和时间（RTC 显示逻辑留空以供扩展）。
-退出选项：通过 cli 和 hlt 实现关机操作。
-
-```
 [BITS 16]           ; 16位实模式
 [ORG 0x7C00]        ; BIOS加载引导所在的内存地址是0x7C00
 
@@ -117,6 +110,12 @@ print_number:
     int 0x10          ; 打印个位
     ret
 
+; Exit program
+exit_program:
+    mov si, exit_msg      ; Display exit message
+    call print_string
+    jmp hang              ; Jump to hang (halt the system)
+
 menu_msg db "Select an option:\n", 0
 option1_msg db "1. Load Program A\n", 0
 option2_msg db "2. Load Program B\n", 0
@@ -126,8 +125,7 @@ program_a_msg db "Author: John Doe\n", 0
 program_b_msg db "Current Date and Time:\n", 0
 time_msg db "Time: ", 0
 colon_msg db ":", 0
+exit_msg db "Exiting program...\n", 0
 
 times 510 - ($ - $$) db 0 ; 填充至510字节
 dw 0xAA55                 ; 引导扇区标志
-
-```
