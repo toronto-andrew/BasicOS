@@ -1,94 +1,160 @@
-[BITS 16]           ; 16位实模式
-[ORG 0x7C00]        ; BIOS加载引导所在的内存地址是0x7C00
+[BITS 16]
+[ORG 0x7C00]
 
-; Define your messages
-welcome_msg db 'Welcome to the OS!', 0x0D, 0x0A, 0
-menu_msg db 'Please select an option:', 0x0D, 0x0A, 0
-option1_msg db '1. Option 1', 0x0D, 0x0A, 0
-option2_msg db '2. Option 2', 0x0D, 0x0A, 0
-option3_msg db '3. Option 3', 0x0D, 0x0A, 0
+    ; Initial boot entry
+    jmp short start
+    nop
+
+; BIOS Parameter Block (BPB)
+OEMLabel        db "MYOS    "   ; 8 bytes
+BytesPerSector  dw 512
+SectorsPerCluster db 1
+ReservedSectors dw 1
+NumberOfFATs    db 2
+RootDirEntries  dw 224
+TotalSectors    dw 2880         ; 1.44 MB
+MediaDescriptor db 0xF0         ; 3.5" floppy
+SectorsPerFAT   dw 9
+SectorsPerTrack dw 18
+NumberOfHeads   dw 2
+HiddenSectors   dd 0
+LargeSectors    dd 0
+DriveNumber     db 0            ; 0 = floppy
+Reserved        db 0
+ExtendedBootSig db 0x29
+SerialNumber    dd 0xDEADBEEF
+VolumeLabel     db "MYOS BOOT  " ; 11 bytes
+FileSystem      db "FAT12   "    ; 8 bytes
 
 start:
-    mov si, welcome_msg ; 加载欢迎信息
-    call print_string   ; 打印字符串
+    ; Set up segments
+    cli                     ; Disable interrupts
+    mov ax, 0x0000
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7C00
+    sti                     ; Enable interrupts
 
-    call display_menu   ; 显示菜单
+    ; Save boot drive
+    mov [bootDrive], dl
 
-wait_input:
-    call get_input      ; 获取用户输入
-    call handle_command ; 处理命令
-    jmp wait_input      ; 等待下一次输入
+    ; Reset disk system
+    mov ah, 0
+    mov dl, [bootDrive]
+    int 0x13
+    jc disk_error
 
-hang:
-    hlt                ; 停机，等待中断
-    jmp hang           ; 死循环，保持程序运行状态
+    ; Print welcome message
+    mov si, welcome_msg
+    call print_string
 
-; 打印字符串的子程序
-; SI: 指向要打印的字符串
-print_string:
-    mov ah, 0x0E       ; BIOS 功能号：在屏幕上显示字符
-.next_char:
-    lodsb              ; 从内存中取出当前字符（由 SI 指向）并加载到 AL 寄存器
-    cmp al, 0          ; 判断当前字符是否为字符串结束符
-    je .done           ; 如果 AL=0（字符串结束符），跳转到完成
-    int 0x10           ; 调用 BIOS 中断显示字符
-    jmp .next_char     ; 打印下一个字符
-.done:
-    ret                ; 返回主程序
+main_loop:
+    call display_menu
+    call get_input
+    call handle_command
+    jmp main_loop
 
-; 显示菜单
-; 在屏幕上显示可用选项
+; Display menu function
 display_menu:
-    mov si, menu_msg   ; 显示选项提示信息
-    call print_string
-
-    mov si, option1_msg ; 显示选项1
-    call print_string
-
-    mov si, option2_msg ; 显示选项2
-    call print_string
-
-    mov si, option3_msg ; 显示选项3
+    mov si, menu_msg
     call print_string
     ret
 
-; 获取用户输入字符
+; Get input function
 get_input:
-    mov ah, 0x00      ; BIOS 功能：获取按键
-    int 0x16          ; 调用 BIOS 按键输入
-    mov ah, 0x0E      ; 打印用户输入的字符
-    int 0x10
+    mov ah, 0
+    int 0x16        ; BIOS keyboard input
     ret
 
-; 处理命令
+; Handle command function
 handle_command:
-    cmp al, '1'       ; 检查是否选择1
-    je list_files
-    cmp al, '2'       ; 检查是否选择2
-    je read_file
-    cmp al, '3'       ; 检查是否选择3
-    je exit_program
-    ret               ; 如果是其他值，返回菜单
-
-; 列出文件
-dir_entry_size equ 32   ; 每个目录条目大小
-read_sector:
-    mov ah, 0x02      ; BIOS 功能号：读扇区
-    mov al, 1         ; 读取一个扇区
-    int 0x13          ; 调用 BIOS 中断读扇区
+    cmp al, '1'
+    je .cmd_list_files
+    cmp al, '2'
+    je .cmd_read_file
+    cmp al, '3'
+    je .cmd_exit
     ret
 
-; 显示文件系统所有内容
+.cmd_list_files:
+    call list_files
+    ret
+
+.cmd_read_file:
+    mov si, msg_not_implemented
+    call print_string
+    ret
+
+.cmd_exit:
+    mov si, exit_msg
+    call print_string
+    jmp $           ; Infinite loop
+
+; List files function (simplified)
 list_files:
-    ; 文件
-dump_dir_start:         ;读取位置
-    root_dir_sector      ;文件起始点下次逻辑会读取
-
-; Define your functions
-read_file:
-    ; Add your file reading code here
+    pusha
+    mov si, dir_msg
+    call print_string
+    
+    ; Read root directory (simplified)
+    mov ah, 0x02
+    mov al, 1
+    mov ch, 0
+    mov cl, 2
+    mov dh, 0
+    mov dl, [bootDrive]
+    mov bx, buffer
+    int 0x13
+    jc disk_error
+    
+    ; Display first entry (simplified)
+    mov cx, 11
+    mov si, buffer
+.print_loop:
+    lodsb
+    mov ah, 0x0E
+    int 0x10
+    loop .print_loop
+    
+    mov si, newline
+    call print_string
+    popa
     ret
 
-exit_program:
-    ; Add your exit code here
+; Print string function
+print_string:
+    pusha
+    mov ah, 0x0E
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
+    jmp .loop
+.done:
+    popa
     ret
+
+; Error handler
+disk_error:
+    mov si, msg_disk_error
+    call print_string
+    jmp $
+
+; Data
+bootDrive        db 0
+welcome_msg      db 'Welcome to MYOS!', 13, 10, 0
+menu_msg         db '1.List 2.Read 3.Exit', 13, 10, 0
+exit_msg         db 'Exiting...', 13, 10, 0
+dir_msg          db 'Files:', 13, 10, 0
+msg_disk_error   db 'Disk error!', 13, 10, 0
+msg_not_implemented db 'Not implemented', 13, 10, 0
+newline          db 13, 10, 0
+
+; Buffer (smaller to fit in boot sector)
+buffer times 64 db 0
+
+; Boot sector padding
+times 510-($-$$) db 0   ; Pad with zeros
+dw 0xAA55               ; Boot signature
