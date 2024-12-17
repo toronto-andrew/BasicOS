@@ -26,26 +26,6 @@ SerialNumber    dd 0xDEADBEEF
 VolumeLabel     db "MYOS BOOT  " ; 11 bytes
 FileSystem      db "FAT12   "    ; 8 bytes
 
-; Print string function (moved to the top)
-print_string:
-    pusha
-    mov ah, 0x0E
-.loop:
-    lodsb
-    test al, al
-    jz .done
-    int 0x10
-    jmp .loop
-.done:
-    popa
-    ret
-
-; Error handler
-disk_error:
-    mov si, msg_disk_error
-    call print_string
-    jmp $
-
 start:
     ; Set up segments
     cli                     ; Disable interrupts
@@ -142,6 +122,26 @@ list_files:
     popa
     ret
 
+; Print string function
+print_string:
+    pusha
+    mov ah, 0x0E
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
+    jmp .loop
+.done:
+    popa
+    ret
+
+; Error handler
+disk_error:
+    mov si, msg_disk_error
+    call print_string
+    jmp $
+
 ; Data
 bootDrive        db 0
 welcome_msg      db 'Welcome to MYOS!', 13, 10, 0
@@ -152,8 +152,8 @@ msg_disk_error   db 'Disk error!', 13, 10, 0
 msg_not_implemented db 'Not implemented', 13, 10, 0
 newline          db 13, 10, 0
 
-; Buffer (reduced size to fit in boot sector)
-buffer times 32 db 0
+; Buffer (smaller to fit in boot sector)
+buffer times 64 db 0
 
 ; Boot sector padding
 times 510-($-$$) db 0   ; Pad with zeros
